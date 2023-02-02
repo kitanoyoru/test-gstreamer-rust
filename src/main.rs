@@ -60,7 +60,7 @@ fn main_loop(pipeline: gstreamer::Pipeline) -> Result<(), Error> {
                         old_state, new_state
                     );
 
-                    let element = pipeline.by_name("test_src").unwrap();
+                    let element = pipeline.by_name("test_sink").unwrap();
 
                     print_pad_capabilities(&element, "sink")
                 }
