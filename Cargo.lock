@@ -586,6 +586,7 @@ dependencies = [
 name = "test-gstreamer-rust"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "glib",
  "gstreamer",
  "gstreamer-app",
