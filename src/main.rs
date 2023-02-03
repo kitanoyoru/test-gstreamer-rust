@@ -16,13 +16,56 @@ fn build_pipeline() -> Result<gstreamer::Pipeline, Error> {
 
     let src = gstreamer::ElementFactory::make("videotestsrc")
         .name("test_src")
+        .property_from_str("pattern", "ball")
         .build()?;
     let sink = gstreamer::ElementFactory::make("autovideosink")
         .name("test_sink")
         .build()?;
 
-    pipeline.add_many(&[&src, &sink])?;
-    gstreamer::Element::link_many(&[&src, &sink])?;
+    let caps = gstreamer_video::VideoCapsBuilder::new()
+        .width(800)
+        .height(800)
+        .framerate((60, 1).into())
+        .build();
+
+    let capsfilter = gstreamer::ElementFactory::make("capsfilter")
+        .property("caps", &caps)
+        .build()?;
+
+    pipeline.add_many(&[&src, &capsfilter, &sink])?;
+    gstreamer::Element::link_many(&[&src, &capsfilter, &sink])?;
+
+    let srcpad = src.static_pad("src").unwrap();
+
+    srcpad.add_probe(
+        gstreamer::PadProbeType::DATA_DOWNSTREAM,
+        move |_, probe_info| {
+            match probe_info.data {
+                Some(gstreamer::PadProbeData::Buffer(ref data)) => {
+                    println!("src: {}", data.size());
+                }
+                _ => (),
+            }
+
+            gstreamer::PadProbeReturn::Ok
+        },
+    );
+
+    let sinkpad = sink.static_pad("sink").unwrap();
+
+    sinkpad.add_probe(
+        gstreamer::PadProbeType::DATA_DOWNSTREAM,
+        move |_, probe_info| {
+            match probe_info.data {
+                Some(gstreamer::PadProbeData::Buffer(ref data)) => {
+                    println!("sink: {}", data.size());
+                }
+                _ => (),
+            }
+
+            gstreamer::PadProbeReturn::Ok
+        },
+    );
 
     Ok(pipeline)
 }
@@ -50,21 +93,6 @@ fn main_loop(pipeline: gstreamer::Pipeline) -> Result<(), Error> {
                 );
                 break;
             }
-            MessageView::StateChanged(state) => {
-                if state.src().map(|s| s == pipeline).unwrap_or(false) {
-                    let new_state = state.current();
-                    let old_state = state.old();
-
-                    println!(
-                        "Pipeline state changed from {:?} to {:?}",
-                        old_state, new_state
-                    );
-
-                    let element = pipeline.by_name("test_sink").unwrap();
-
-                    print_pad_capabilities(&element, "sink")
-                }
-            }
             _ => (),
         }
     }
@@ -74,37 +102,6 @@ fn main_loop(pipeline: gstreamer::Pipeline) -> Result<(), Error> {
         .expect("Unable to set the pipeline to the null state");
 
     Ok(())
-}
-
-fn print_pad_capabilities(element: &gstreamer::Element, pad_name: &str) {
-    let pad = element.static_pad(pad_name).expect("Could not retrice pad");
-    println!("Caps for the {} pad:", pad_name);
-    let caps = pad.current_caps().unwrap_or_else(|| pad.query_caps(None));
-    print_caps(&caps, "     ");
-}
-
-fn print_caps(caps: &gstreamer::Caps, prefix: &str) {
-    if caps.is_any() {
-        println!("{}ANY", prefix);
-        return;
-    }
-
-    if caps.is_empty() {
-        println!("{}EMPTY", prefix);
-        return;
-    }
-
-    for structure in caps.iter() {
-        println!("{}{}", prefix, structure.name());
-        for (field, value) in structure.iter() {
-            println!(
-                "{}  {}:{}",
-                prefix,
-                field,
-                value.serialize().unwrap().as_str()
-            );
-        }
-    }
 }
 
 fn example_main() {
